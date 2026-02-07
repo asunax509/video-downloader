@@ -1,81 +1,94 @@
-from flask import Flask, request, jsonify, send_file, abort, after_this_request
-import requests, subprocess, uuid, os, time, re
+from flask import Flask, request, send_file, abort, after_this_request
+import subprocess, uuid, os, time, requests
 
 app = Flask(__name__)
-LAST = {}
+LAST_REQUEST = {}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 10; Mobile)",
-    "Accept": "*/*",
     "Referer": "https://www.tiktok.com/"
 }
 
 def get_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr)
 
-def resolve_tiktok(url):
+def resolve_url(url):
     r = requests.get(url, headers=HEADERS, allow_redirects=True, timeout=10)
     return r.url
 
 @app.route("/")
 def home():
-    return "SSSTIK.IO Compatible Backend 🚀"
+    return "SSSTIK Style Backend 🚀 (MP3 + 720p)"
 
 @app.route("/download")
 def download():
     url = request.args.get("url")
-    if not url:
-        abort(400, "URL requise")
+    dtype = request.args.get("type", "video")   # video | mp3
 
-    if "tiktok" not in url:
-        abort(400, "Lien TikTok seulement")
+    if not url or "tiktok" not in url:
+        abort(400, "Lien TikTok requis")
 
     ip = get_ip()
     now = time.time()
-    if ip in LAST and now - LAST[ip] < 15:
+    if ip in LAST_REQUEST and now - LAST_REQUEST[ip] < 15:
         abort(429, "Attendez 15 secondes")
-    LAST[ip] = now
+    LAST_REQUEST[ip] = now
 
     try:
-        resolved = resolve_tiktok(url)
+        resolved = resolve_url(url)
     except:
-        abort(400, "Impossible de résoudre le lien")
+        abort(400, "Lien invalide")
 
-    filename = f"{uuid.uuid4()}.mp4"
-    path = f"/tmp/{filename}"
+    uid = str(uuid.uuid4())
 
-    try:
-        subprocess.run([
+    # 🎵 MP3 (RAM SAFE)
+    if dtype == "mp3":
+        filepath = f"/tmp/{uid}.mp3"
+        cmd = [
             "yt-dlp",
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "5",
             "--no-playlist",
-            "--extractor-args", "tiktok:api_hostname=api16-normal-c-useast1a.tiktokv.com",
-            "--user-agent", HEADERS["User-Agent"],
-            "-f", "bestvideo+bestaudio/best",
-            "--merge-output-format", "mp4",
-            "-o", path,
+            "-o", filepath,
             resolved
-        ], check=True, timeout=60)
-    except subprocess.TimeoutExpired:
-        abort(504, "Timeout")
-    except:
-        abort(500, "Erreur TikTok extractor")
+        ]
 
-    if not os.path.exists(path):
+    # 🎬 VIDEO 720p (RAM SAFE)
+    else:
+        filepath = f"/tmp/{uid}.mp4"
+        cmd = [
+            "yt-dlp",
+            "-f", "bv*[height<=720][ext=mp4]/b[ext=mp4]",
+            "--no-playlist",
+            "--user-agent", HEADERS["User-Agent"],
+            "-o", filepath,
+            resolved
+        ]
+
+    try:
+        subprocess.run(cmd, check=True, timeout=50)
+    except subprocess.TimeoutExpired:
+        abort(504, "Timeout téléchargement")
+    except:
+        abort(500, "Erreur téléchargement")
+
+    if not os.path.exists(filepath):
         abort(500, "Fichier non généré")
 
     @after_this_request
     def cleanup(response):
         try:
-            os.remove(path)
+            os.remove(filepath)
         except:
             pass
         return response
 
     return send_file(
-        path,
+        filepath,
         as_attachment=True,
-        download_name="tiktok_no_watermark.mp4",
-        mimetype="video/mp4"
+        download_name=os.path.basename(filepath),
+        mimetype="application/octet-stream"
     )
 
 if __name__ == "__main__":
