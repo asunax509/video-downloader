@@ -3,6 +3,7 @@ import subprocess, uuid, os, time
 
 app = Flask(__name__) 
 
+# Limite IP pou evite spam
 LAST_REQUEST = {}
 
 @app.route("/")
@@ -18,13 +19,13 @@ def download():
     ip = request.remote_addr
     now = time.time()
 
-    # 🔒 LIMIT: 1 requête / 20 secondes
+    # 🔒 Limit: 1 requête / 20 secondes par IP
     if ip in LAST_REQUEST and now - LAST_REQUEST[ip] < 20:
         abort(429, "Trop de requêtes, patiente 20s")
 
     LAST_REQUEST[ip] = now
 
-    # 🎯 TikTok ONLY
+    # 🎯 TikTok only
     if "tiktok.com" not in url:
         abort(400, "Seuls les liens TikTok sont autorisés")
 
@@ -32,10 +33,14 @@ def download():
     filepath = f"/tmp/{filename}"
 
     try:
+        # Telechaje video MP4 / fallback sou pi bon format
         subprocess.run(
-            ["yt-dlp", "-f", "mp4", "-o", filepath, url],
-            check=True
+            ["yt-dlp", "-f", "best[ext=mp4]/best", "-o", filepath, url],
+            check=True,
+            timeout=60  # 1 min max
         )
+    except subprocess.TimeoutExpired:
+        abort(504, "Download timeout, vidéo trop longue")
     except Exception as e:
         abort(500, f"yt-dlp error: {e}")
 
