@@ -41,7 +41,7 @@ def download():
 
     uid = str(uuid.uuid4())
 
-    # 🎵 MP3 (RAM SAFE)
+    # 🎵 MP3
     if dtype == "mp3":
         filepath = f"/tmp/{uid}.mp3"
         cmd = [
@@ -54,7 +54,7 @@ def download():
             resolved
         ]
 
-    # 🎬 VIDEO 720p (RAM SAFE)
+    # 🎬 VIDEO 720p
     else:
         filepath = f"/tmp/{uid}.mp4"
         cmd = [
@@ -90,6 +90,3 @@ def download():
         download_name=os.path.basename(filepath),
         mimetype="application/octet-stream"
     )
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
